@@ -209,14 +209,10 @@
     <!-- 階段 0: 遊戲設定 -->
     <div id="step-setup">
         <h1>目擊者之夜</h1>
-        <p>山中別館發生了命案，兇手就在我們之中！<br>請選擇遊玩人數（4～8 人）：</p>
-        <select id="player-count">
-            <option value="4">4 人（殺人魔、共犯、偵探、富商、客人）</option>
-            <option value="5" selected>5 人（殺人魔、共犯、偵探、富商、客人*2）</option>
-            <option value="6">6 人（殺人魔、共犯、偵探、富商、炸彈客、客人*2）</option>
-            <option value="7">7 人（殺人魔、共犯、偵探、富商、律師、炸彈客、客人*2）</option>
-            <option value="8">8 人（殺人魔、共犯、偵探、富商、律師、炸彈客、客人*3）</option>
-        </select>
+        <p>山中別館發生了命案，兇手就在我們之中！<br>請選擇角色組合等級與遊玩人數：</p>
+        <select id="level-select" onchange="updateSetup()"></select>
+        <select id="player-count" onchange="updateSetup(true)" style="margin-top:0"></select>
+        <div class="result-box" id="setup-info" style="margin:0 0 8px;font-size:13px"></div>
         <button class="btn" onclick="startGame()">開始遊戲</button>
     </div>
 
@@ -255,7 +251,8 @@
         <div class="timer-display" id="timer-text">03:00</div>
         
         <button class="btn btn-secondary" onclick="toggleTimer()" id="timer-btn">開始計時</button>
-        <button class="btn btn-warning" onclick="showDetectiveModal()">偵探公開指定處決</button>
+        <button class="btn btn-warning" id="btn-detective" onclick="showDetectiveModal()">偵探公開指定處決</button>
+        <button class="btn btn-warning" id="btn-butler" onclick="showButlerModal()">管家查看蓋牌</button>
         <button class="btn" onclick="goToVoting()">直接進入投票階段</button>
     </div>
 
@@ -268,10 +265,16 @@
         <button class="btn btn-secondary" onclick="hideDetectiveModal()">取消</button>
     </div>
 
+    <!-- 管家查看蓋牌彈窗 -->
+    <div id="butler-modal" class="hidden">
+        <h2>管家查看蓋牌</h2>
+        <div id="butler-body"></div>
+    </div>
+
     <!-- 階段 4: 投票階段 -->
     <div id="step-vote" class="hidden">
-        <h2>全員投票</h2>
-        <p>請選擇每位玩家要把誰（或<b>客房</b>）投進鍋爐室：</p>
+        <h2 id="vote-title">全員投票</h2>
+        <p id="vote-desc">請選擇每位玩家要把誰（或<b>客房</b>）投進鍋爐室：</p>
         <div id="vote-list"></div>
         <button class="btn" onclick="tallyVotes()">確認開票與結算</button>
     </div>
@@ -293,6 +296,7 @@ const ROLE_DATA = {
     '富商': { team: '好人', badge: 'badge-good', desc: '【好人陣營】開票時可公開身份，你投出的那一票算作 2 票。' },
     '律師': { team: '好人', badge: 'badge-good', desc: '【好人陣營】開票時可公開身份，你投給的那個人獲得的所有票數無效。' },
     '炸彈客': { team: '第三方', badge: 'badge-neutral', desc: '【第三方】你的目標是讓自己被關進鍋爐室！若成功則獨自獲勝。' },
+    '管家': { team: '好人', badge: 'badge-good', desc: '【好人陣營】討論時可查看遊戲開始時蓋在鍋爐室旁的 2 張牌，但會失去投票牌。' },
     '客人': { team: '好人', badge: 'badge-good', desc: '【好人陣營】無特殊能力，透過觀察與傳牌邏輯找出殺人魔。' }
 };
 
@@ -313,14 +317,77 @@ function shuffle(array) {
     return array;
 }
 
+const ALL7 = ['殺人魔', '共犯', '炸彈客', '律師', '富商', '偵探', '管家'];
+const LEVELS = {
+    1: { roles: ['殺人魔'], guests: { 3: 3, 4: 4 } },
+    2: { roles: ['殺人魔', '共犯'], guests: { 3: 2, 4: 3, 5: 4 } },
+    3: { roles: ['殺人魔', '共犯', '律師'], guests: { 4: 2, 5: 3, 6: 4 } },
+    4: { roles: ['殺人魔', '炸彈客'], guests: { 3: 2, 4: 3, 5: 4 } },
+    5: { roles: ['殺人魔', '炸彈客', '富商'], guests: { 4: 2, 5: 3, 6: 4 } },
+    6: { roles: ['殺人魔', '炸彈客', '偵探'], guests: { 4: 2, 5: 3, 6: 4 } },
+    7: { roles: ALL7, guests: { 4: 0, 5: 1, 6: 2 }, aside: 2, removed: 0 },
+    8: { roles: ALL7, guests: { 4: 2, 5: 3, 6: 4 }, aside: 2, removed: 2 }
+};
+
+let asideCards = [];   // 管家規則：蓋在鍋爐室旁的 2 張牌
+let removedCount = 0;
+let butlerUser = null; // 已使用能力（失去投票權）的管家玩家 id
+let levelCfg = null;
+
+function buildRoles(level, count) {
+    const cfg = LEVELS[level];
+    const roles = [...cfg.roles];
+    for (let i = 0; i < cfg.guests[count]; i++) roles.push('客人');
+    return roles;
+}
+
+function updateSetup(keepCount) {
+    const levelSel = document.getElementById('level-select');
+    const countSel = document.getElementById('player-count');
+    if (!levelSel.options.length) {
+        levelSel.innerHTML = Object.keys(LEVELS).map(l => {
+            const r = LEVELS[l].roles.filter(x => x !== '殺人魔');
+            const label = LEVELS[l].aside ? '全角色（含管家）' : r.concat('客人').join('、');
+            const ps = Object.keys(LEVELS[l].guests);
+            return `<option value="${l}">等級 ${l}｜${ps[0]}～${ps[ps.length - 1]} 人｜${label}</option>`;
+        }).join('');
+    }
+    const level = parseInt(levelSel.value);
+    const cfg = LEVELS[level];
+    const counts = Object.keys(cfg.guests);
+    if (!keepCount) {
+        const prev = countSel.value;
+        countSel.innerHTML = counts.map(c => `<option value="${c}">${c} 人</option>`).join('');
+        if (counts.includes(prev)) countSel.value = prev;
+    }
+    const count = parseInt(countSel.value);
+    const roles = buildRoles(level, count);
+    const tally = {};
+    roles.forEach(r => tally[r] = (tally[r] || 0) + 1);
+    let info = '<b>牌組：</b>' + Object.entries(tally).map(([r, n]) => n > 1 ? `${r}×${n}` : r).join('、');
+    if (cfg.aside) {
+        info += `<br><b>管家規則：</b>先排除殺人魔，隨機抽 2 張蓋在鍋爐室旁` +
+            (cfg.removed ? `，再移除 ${cfg.removed} 張出遊戲` : '') + '，最後殺人魔放回牌庫。';
+    }
+    document.getElementById('setup-info').innerHTML = info;
+}
+
 function startGame() {
+    const level = parseInt(document.getElementById('level-select').value);
     const count = parseInt(document.getElementById('player-count').value);
-    
-    let roles = ['殺人魔', '共犯', '偵探', '富商', '客人'];
-    if (count >= 5) roles.push('客人');
-    if (count >= 6) roles.push('炸彈客');
-    if (count >= 7) roles.push('律師');
-    if (count >= 8) roles.push('客人');
+    levelCfg = LEVELS[level];
+
+    let roles = buildRoles(level, count);
+    asideCards = [];
+    butlerUser = null;
+
+    if (levelCfg.aside) {
+        // 管家規則：排除殺人魔 → 抽 2 張蓋牌 → (等級8) 再移除 2 張 → 殺人魔放回
+        const rest = shuffle(roles.filter(r => r !== '殺人魔'));
+        asideCards = rest.splice(0, levelCfg.aside);
+        rest.splice(0, levelCfg.removed);
+        roles = rest.concat('殺人魔');
+    }
 
     deck = shuffle(roles);
     players = Array.from({ length: count }, (_, i) => ({
@@ -416,6 +483,8 @@ function confirmChoice() {
 function startDiscussion() {
     document.getElementById('step-choose').classList.add('hidden');
     document.getElementById('step-discuss').classList.remove('hidden');
+    document.getElementById('btn-detective').classList.toggle('hidden', !levelCfg.roles.includes('偵探'));
+    document.getElementById('btn-butler').classList.toggle('hidden', !levelCfg.roles.includes('管家'));
     updateTimerDisplay();
 }
 
@@ -470,20 +539,59 @@ function executeDetectiveSkill() {
     }
 }
 
-function goToVoting() {
+let pkCandidates = null; // 平票 PK 時的候選人（null 代表一般投票）
+
+function showButlerModal() {
+    if (butlerUser !== null) { alert('管家已經使用過能力了。'); return; }
+    const opts = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    document.getElementById('butler-body').innerHTML = `
+        <p>請管家本人選擇自己的玩家編號。<b>查看蓋牌後將失去投票牌。</b></p>
+        <select id="butler-player">${opts}</select>
+        <button class="btn" onclick="butlerConfirm()">確認查看蓋牌</button>
+        <button class="btn btn-secondary" onclick="hideButlerModal()">取消</button>`;
+    document.getElementById('butler-modal').classList.remove('hidden');
+}
+
+function hideButlerModal() {
+    document.getElementById('butler-modal').classList.add('hidden');
+}
+
+function butlerConfirm() {
+    const p = players.find(x => x.id === parseInt(document.getElementById('butler-player').value));
+    if (p.card !== '管家') { alert('此玩家不是管家，無法使用管家能力。'); return; }
+    if (!confirm('請其他人不要看螢幕。查看後管家將失去投票牌，確定嗎？')) return;
+    butlerUser = p.id;
+    document.getElementById('butler-body').innerHTML = `
+        <p>${p.name}（管家）看到的蓋牌：</p>
+        <div class="result-box"><b>${asideCards.join('、')}</b></div>
+        <p>你已失去投票牌。看完請按下方按鈕，再把手機放回桌上。</p>
+        <button class="btn" onclick="hideButlerModal()">我看完了</button>`;
+}
+
+function goToVoting(candidates) {
     if (timerInterval) clearInterval(timerInterval);
+    pkCandidates = Array.isArray(candidates) ? candidates.map(String) : null;
+    const isPK = pkCandidates !== null;
+
     document.getElementById('step-discuss').classList.add('hidden');
+    document.getElementById('step-result').classList.add('hidden');
     document.getElementById('step-vote').classList.remove('hidden');
+
+    const nameOf = k => k === 'ROOM' ? '🏠 客房' : players.find(p => String(p.id) === k).name;
+    document.getElementById('vote-title').innerText = isPK ? '⚔️ 平票 PK 投票' : '全員投票';
+    document.getElementById('vote-desc').innerHTML = isPK
+        ? `最高票平手！只能在 <b>${pkCandidates.map(nameOf).join('、')}</b> 之間投票。<br>若 PK 仍平票，則平票者<b>全部</b>進鍋爐室（雙殺）。`
+        : '請選擇每位玩家要把誰（或<b>客房</b>）投進鍋爐室：';
 
     const container = document.getElementById('vote-list');
     container.innerHTML = players.map(p => {
-        let options = players
-            .filter(t => t.id !== p.id)
-            .map(t => `<option value="${t.id}">${t.name}</option>`)
-            .join('');
-        
-        options += `<option value="ROOM">🏠 客房（預留卡牌）</option>`;
-
+        let keys = players.filter(t => t.id !== p.id).map(t => String(t.id));
+        keys.push('ROOM');
+        if (isPK) keys = keys.filter(k => pkCandidates.includes(k));
+        const options = keys.map(k => `<option value="${k}">${nameOf(k)}</option>`).join('');
+        if (p.id === butlerUser) {
+            return `<div class="vote-row"><span><b>${p.name}</b>（管家）已失去投票牌</span></div>`;
+        }
         return `
             <div class="vote-row">
                 <span><b>${p.name}</b> 投給：</span>
@@ -506,7 +614,9 @@ function tallyVotes() {
 
     // 計算票數（富商票數權重為 2）
     players.forEach(p => {
-        let targetVal = document.getElementById(`vote-from-${p.id}`).value;
+        const voteEl = document.getElementById(`vote-from-${p.id}`);
+        if (!voteEl) return; // 管家已失去投票牌
+        let targetVal = voteEl.value;
         let weight = (p.card === '富商') ? 2 : 1;
         voteCounts[targetVal] += weight;
     });
@@ -522,13 +632,30 @@ function tallyVotes() {
     let maxVotes = -1;
     let highestKeys = [];
 
-    for (let key in voteCounts) {
+    const countKeys = pkCandidates || Object.keys(voteCounts);
+    for (const key of countKeys) {
         if (voteCounts[key] > maxVotes) {
             maxVotes = voteCounts[key];
             highestKeys = [key];
         } else if (voteCounts[key] === maxVotes) {
             highestKeys.push(key);
         }
+    }
+
+    // 平票處理：第一次平票 → PK；PK 仍平票 → 雙殺（平票者全部進鍋爐室）
+    if (highestKeys.length > 1) {
+        if (pkCandidates === null) {
+            const tiedNames = highestKeys.map(k => k === 'ROOM' ? '客房' : players.find(p => String(p.id) === k).name).join('、');
+            alert(`平票！${tiedNames} 同為 ${maxVotes} 票，進入 PK 投票。`);
+            goToVoting(highestKeys);
+            return;
+        }
+        const targets = highestKeys.map(k => ({
+            id: k,
+            name: k === 'ROOM' ? '🏠 客房（預留卡牌）' : players.find(p => String(p.id) === k).name
+        }));
+        finalizeMulti(targets, `PK 後仍平票（各 ${maxVotes} 票），觸發<b>雙殺</b>：平票者全部被關進鍋爐室。${extraNote}`);
+        return;
     }
 
     let sentencedKey = highestKeys[0];
@@ -541,24 +668,34 @@ function tallyVotes() {
 }
 
 function finalizeGame(targetId, targetName, reason) {
+    finalizeMulti([{ id: targetId, name: targetName }], reason);
+}
+
+function finalizeMulti(targets, reason) {
     document.getElementById('step-discuss').classList.add('hidden');
     document.getElementById('step-vote').classList.add('hidden');
     document.getElementById('step-result').classList.remove('hidden');
 
-    let sentencedCard = (targetId === 'ROOM') ? deck[0] : players.find(p => p.id === targetId).card;
+    const executed = targets.map(t => ({
+        name: t.name,
+        card: String(t.id) === 'ROOM' ? deck[0] : players.find(p => String(p.id) === String(t.id)).card
+    }));
+    const names = executed.map(e => e.name).join('、');
+    const list = executed.map(e => `【${e.card}】（${e.name}）`).join('、');
+    const has = r => executed.some(e => e.card === r);
 
     let titleText = '';
-    let resultHtml = `<b>裁決對象：</b>${targetName}<br><b>說明：</b>${reason}<br><br>`;
+    let resultHtml = `<b>裁決對象：</b>${names}<br><b>說明：</b>${reason}<br><br>`;
 
-    if (sentencedCard === '炸彈客') {
+    if (has('炸彈客')) {
         titleText = '💥 炸彈客引爆獨贏！';
-        resultHtml += `🔥 <b>【炸彈客】（在 ${targetName}）被關進鍋爐室！</b><br>炸彈客成功讓自己被指認，獨自獲得最終勝利！其他所有人皆失敗。`;
-    } else if (sentencedCard === '殺人魔') {
+        resultHtml += `🔥 被關進鍋爐室的有：${list}<br>炸彈客成功讓自己被關進鍋爐室，獨自獲得最終勝利！其他所有人皆失敗。`;
+    } else if (has('殺人魔')) {
         titleText = '🎉 賓客陣營（好人）獲勝！';
-        resultHtml += `⚖️ <b>【殺人魔】（在 ${targetName}）被抓獲！</b><br>正義得以伸張，好人陣營成功將殺人魔送進鍋爐室！`;
+        resultHtml += `⚖️ 被關進鍋爐室的有：${list}<br>正義得以伸張，【殺人魔】被送進鍋爐室！`;
     } else {
         titleText = '😈 壞人陣營獲勝！';
-        resultHtml += `🩸 <b>【${sentencedCard}】（在 ${targetName}）被送進鍋爐室！</b><br>抓錯人了！真正的殺人魔成功混淆視聽並順利逃脫！`;
+        resultHtml += `🩸 被關進鍋爐室的有：${list}<br>抓錯人了！真正的殺人魔成功混淆視聽並順利逃脫！`;
     }
 
     document.getElementById('winner-title').innerText = titleText;
@@ -572,8 +709,10 @@ function finalizeGame(targetId, targetName, reason) {
     });
     cardsHtml += `<br>🏠 客房預留牌：<b>${deck[0]}</b> (${ROLE_DATA[deck[0]].team})`;
     
+    if (asideCards.length) cardsHtml += `<br>🔒 蓋牌（管家可看）：<b>${asideCards.join('、')}</b>`;
     document.getElementById('all-cards-detail').innerHTML = cardsHtml;
 }
+updateSetup();
 </script>
 
 </body>
