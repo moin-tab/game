@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>目擊者之夜 - 派對助手</title>
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-bg: #1e1e24;
+            --primary: #e53935;
+            --primary-dark: #b71c1c;
+            --accent: #ffb74d;
+            --text-main: #f1f1f1;
+            --text-sub: #aaa;
+            --border: #333;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        .container {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 24px 20px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+            border: 1px solid #2a2a32;
+            text-align: center;
+        }
+
+        h1 {
+            color: var(--primary);
+            font-size: 26px;
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        h2 {
+            color: var(--accent);
+            font-size: 20px;
+            margin-bottom: 12px;
+        }
+
+        p {
+            color: var(--text-sub);
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            margin-top: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(229, 57, 53, 0.3);
+        }
+
+        .btn:active {
+            background: var(--primary-dark);
+            transform: scale(0.98);
+        }
+
+        .btn-secondary {
+            background: #33333d;
+            box-shadow: none;
+            border: 1px solid #444452;
+        }
+
+        .btn-warning {
+            background: #f57f17;
+            box-shadow: 0 4px 12px rgba(245, 127, 23, 0.3);
+        }
+
+        select {
+            width: 100%;
+            padding: 14px;
+            margin: 12px 0 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #2a2a34;
+            color: white;
+            font-size: 16px;
+            outline: none;
+        }
+
+        .card-options {
+            display: flex;
+            gap: 12px;
+            margin: 20px 0;
+        }
+
+        .card-item {
+            flex: 1;
+            background: #282832;
+            border: 2px solid #444;
+            border-radius: 12px;
+            padding: 16px 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: left;
+            position: relative;
+        }
+
+        .card-item.selected {
+            border-color: var(--accent);
+            background: #322d20;
+            box-shadow: 0 0 12px rgba(255, 183, 77, 0.2);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .badge-bad { background: #b71c1c; color: #fff; }
+        .badge-good { background: #1b5e20; color: #fff; }
+        .badge-neutral { background: #f57f17; color: #fff; }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+
+        .card-desc {
+            font-size: 12px;
+            color: #bbb;
+            line-height: 1.4;
+        }
+
+        .timer-display {
+            font-size: 42px;
+            font-weight: bold;
+            color: var(--accent);
+            margin: 16px 0;
+            letter-spacing: 2px;
+        }
+
+        .vote-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #282832;
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            text-align: left;
+        }
+
+        .vote-row select {
+            width: 60%;
+            margin: 0;
+            padding: 8px;
+        }
+
+        .result-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 16px 0 8px;
+            color: var(--accent);
+        }
+
+        .result-box {
+            background: #282832;
+            border-radius: 10px;
+            padding: 16px;
+            margin: 16px 0;
+            text-align: left;
+            font-size: 14px;
+            line-height: 1.6;
+            border-left: 4px solid var(--accent);
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- 階段 0: 遊戲設定 -->
+    <div id="step-setup">
+        <h1>目擊者之夜</h1>
+        <p>山中別館發生了命案，兇手就在我們之中！<br>請選擇遊玩人數（4～8 人）：</p>
+        <select id="player-count">
+            <option value="4">4 人（殺人魔、共犯、偵探、富商、客人）</option>
+            <option value="5" selected>5 人（殺人魔、共犯、偵探、富商、客人*2）</option>
+            <option value="6">6 人（殺人魔、共犯、偵探、富商、炸彈客、客人*2）</option>
+            <option value="7">7 人（殺人魔、共犯、偵探、富商、律師、炸彈客、客人*2）</option>
+            <option value="8">8 人（殺人魔、共犯、偵探、富商、律師、炸彈客、客人*3）</option>
+        </select>
+        <button class="btn" onclick="startGame()">開始遊戲</button>
+    </div>
+
+    <!-- 階段 1: 防偷看傳閱提示 -->
+    <div id="step-pass" class="hidden">
+        <h2 id="pass-title">玩家 1 請接過手機</h2>
+        <p id="pass-sub">請確認周圍沒有其他人觀看你的螢幕。</p>
+        <button class="btn" onclick="revealCards()">點擊查看我的卡牌</button>
+    </div>
+
+    <!-- 階段 2: 抽 2 選 1 介面 -->
+    <div id="step-choose" class="hidden">
+        <h2 id="choose-player-name">玩家 1 的回合</h2>
+        <p id="choose-tip">請選擇 <b>1 張卡牌留給自己</b>，剩餘 1 張將傳給下一位玩家：</p>
+        
+        <div class="card-options">
+            <div id="card-0" class="card-item" onclick="selectCard(0)">
+                <span id="badge-0" class="badge">陣營</span>
+                <div id="title-0" class="card-title">角色 A</div>
+                <div id="desc-0" class="card-desc">描述</div>
+            </div>
+            <div id="card-1" class="card-item" onclick="selectCard(1)">
+                <span id="badge-1" class="badge">陣營</span>
+                <div id="title-1" class="card-title">角色 B</div>
+                <div id="desc-1" class="card-desc">描述</div>
+            </div>
+        </div>
+
+        <button id="confirm-btn" class="btn btn-secondary" onclick="confirmChoice()" disabled>請先選擇一張卡牌</button>
+    </div>
+
+    <!-- 階段 3: 自由討論與計時 -->
+    <div id="step-discuss" class="hidden">
+        <h2>自由討論階段</h2>
+        <p>大家有 3 分鐘時間進行情報交換、推理與說謊！</p>
+        <div class="timer-display" id="timer-text">03:00</div>
+        
+        <button class="btn btn-secondary" onclick="toggleTimer()" id="timer-btn">開始計時</button>
+        <button class="btn btn-warning" onclick="showDetectiveModal()">偵探公開指定處決</button>
+        <button class="btn" onclick="goToVoting()">直接進入投票階段</button>
+    </div>
+
+    <!-- 偵探發動能力彈窗 -->
+    <div id="detective-modal" class="hidden">
+        <h2>偵探發動公開處決</h2>
+        <p>請偵探公開身份，並直接指定一名玩家或<b>客房</b>送進鍋爐室：</p>
+        <select id="detective-target"></select>
+        <button class="btn" onclick="executeDetectiveSkill()">確認送進鍋爐室</button>
+        <button class="btn btn-secondary" onclick="hideDetectiveModal()">取消</button>
+    </div>
+
+    <!-- 階段 4: 投票階段 -->
+    <div id="step-vote" class="hidden">
+        <h2>全員投票</h2>
+        <p>請選擇每位玩家要把誰（或<b>客房</b>）投進鍋爐室：</p>
+        <div id="vote-list"></div>
+        <button class="btn" onclick="tallyVotes()">確認開票與結算</button>
+    </div>
+
+    <!-- 階段 5: 結算揭曉 -->
+    <div id="step-result" class="hidden">
+        <h2 class="result-title" id="winner-title">遊戲結束</h2>
+        <div class="result-box" id="result-detail"></div>
+        <div class="result-box" id="all-cards-detail" style="border-left-color: #0277bd;"></div>
+        <button class="btn" onclick="location.reload()">再開一局</button>
+    </div>
+</div>
+
+<script>
+const ROLE_DATA = {
+    '殺人魔': { team: '壞人', badge: 'badge-bad', desc: '【壞人陣營】隱藏身份！目標是最終沒有被關進鍋爐室。' },
+    '共犯': { team: '壞人', badge: 'badge-bad', desc: '【壞人陣營】幫殺人魔打掩護、轉移注意力，保住殺人魔即獲勝。' },
+    '偵探': { team: '好人', badge: 'badge-good', desc: '【好人陣營】帶領大家找出殺人魔！討論時可公開身份並直接處決一人或客房。' },
+    '富商': { team: '好人', badge: 'badge-good', desc: '【好人陣營】開票時可公開身份，你投出的那一票算作 2 票。' },
+    '律師': { team: '好人', badge: 'badge-good', desc: '【好人陣營】開票時可公開身份，你投給的那個人獲得的所有票數無效。' },
+    '炸彈客': { team: '第三方', badge: 'badge-neutral', desc: '【第三方】你的目標是讓自己被關進鍋爐室！若成功則獨自獲勝。' },
+    '客人': { team: '好人', badge: 'badge-good', desc: '【好人陣營】無特殊能力，透過觀察與傳牌邏輯找出殺人魔。' }
+};
+
+let deck = [];
+let players = [];
+let currentIndex = 0;
+let cardInHand = null; 
+let currentChoices = []; 
+let selectedIndex = -1;
+let timerInterval = null;
+let timeLeft = 180;
+
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+function startGame() {
+    const count = parseInt(document.getElementById('player-count').value);
+    
+    let roles = ['殺人魔', '共犯', '偵探', '富商', '客人'];
+    if (count >= 5) roles.push('客人');
+    if (count >= 6) roles.push('炸彈客');
+    if (count >= 7) roles.push('律師');
+    if (count >= 8) roles.push('客人');
+
+    deck = shuffle(roles);
+    players = Array.from({ length: count }, (_, i) => ({
+        id: i + 1,
+        name: `玩家 ${i + 1}`,
+        card: null
+    }));
+
+    currentIndex = 0;
+    cardInHand = null;
+
+    prepareTurn();
+}
+
+function prepareTurn() {
+    document.getElementById('step-setup').classList.add('hidden');
+    document.getElementById('step-choose').classList.add('hidden');
+    document.getElementById('step-pass').classList.remove('hidden');
+
+    const pName = players[currentIndex].name;
+    document.getElementById('pass-title').innerText = `${pName} 請接過手機`;
+    if (currentIndex === 0) {
+        document.getElementById('pass-sub').innerText = '你是起始玩家，將從牌庫抽取 2 張卡牌。';
+    } else {
+        document.getElementById('pass-sub').innerText = `已收到上一位玩家傳來的 1 張卡牌，並從牌庫自動抽取 1 張。`;
+    }
+}
+
+function revealCards() {
+    document.getElementById('step-pass').classList.add('hidden');
+    document.getElementById('step-choose').classList.remove('hidden');
+
+    document.getElementById('choose-player-name').innerText = `${players[currentIndex].name} 的回合`;
+
+    if (currentIndex === 0) {
+        currentChoices = [deck.pop(), deck.pop()];
+    } else {
+        currentChoices = [cardInHand, deck.pop()];
+    }
+
+    selectedIndex = -1;
+    document.getElementById('confirm-btn').disabled = true;
+    document.getElementById('confirm-btn').classList.add('btn-secondary');
+    document.getElementById('confirm-btn').innerText = '請先選擇一張卡牌';
+
+    for (let i = 0; i < 2; i++) {
+        const cardName = currentChoices[i];
+        const info = ROLE_DATA[cardName];
+        const el = document.getElementById(`card-${i}`);
+        
+        el.classList.remove('selected');
+        document.getElementById(`title-${i}`).innerText = cardName;
+        document.getElementById(`desc-${i}`).innerText = info.desc;
+        
+        const badgeEl = document.getElementById(`badge-${i}`);
+        badgeEl.className = `badge ${info.badge}`;
+        
+        if (currentIndex > 0 && i === 0) {
+            badgeEl.innerText = `[傳來的] ${info.team}`;
+        } else {
+            badgeEl.innerText = info.team;
+        }
+    }
+}
+
+function selectCard(idx) {
+    selectedIndex = idx;
+    document.getElementById('card-0').classList.toggle('selected', idx === 0);
+    document.getElementById('card-1').classList.toggle('selected', idx === 1);
+
+    const btn = document.getElementById('confirm-btn');
+    btn.disabled = false;
+    btn.classList.remove('btn-secondary');
+    btn.innerText = `確認保留【${currentChoices[idx]}】，傳遞另一張`;
+}
+
+function confirmChoice() {
+    if (selectedIndex === -1) return;
+
+    players[currentIndex].card = currentChoices[selectedIndex];
+    cardInHand = currentChoices[1 - selectedIndex];
+
+    currentIndex++;
+
+    if (currentIndex < players.length) {
+        prepareTurn();
+    } else {
+        deck.push(cardInHand);
+        startDiscussion();
+    }
+}
+
+function startDiscussion() {
+    document.getElementById('step-choose').classList.add('hidden');
+    document.getElementById('step-discuss').classList.remove('hidden');
+    updateTimerDisplay();
+}
+
+function toggleTimer() {
+    const btn = document.getElementById('timer-btn');
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        btn.innerText = '繼續計時';
+    } else {
+        timerInterval = setInterval(() => {
+            if (timeLeft > 0) {
+                timeLeft--;
+                updateTimerDisplay();
+            } else {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                alert('時間到！請開始投票或進行討論處決！');
+            }
+        }, 1000);
+        btn.innerText = '暫停計時';
+    }
+}
+
+function updateTimerDisplay() {
+    const mins = String(Math.floor(timeLeft / 60)).padStart(2, '0');
+    const secs = String(timeLeft % 60).padStart(2, '0');
+    document.getElementById('timer-text').innerText = `${mins}:${secs}`;
+}
+
+function showDetectiveModal() {
+    const select = document.getElementById('detective-target');
+    let optionsHtml = players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    optionsHtml += `<option value="ROOM">🏠 客房（預留卡牌）</option>`;
+    select.innerHTML = optionsHtml;
+    document.getElementById('detective-modal').classList.remove('hidden');
+}
+
+function hideDetectiveModal() {
+    document.getElementById('detective-modal').classList.add('hidden');
+}
+
+function executeDetectiveSkill() {
+    const targetVal = document.getElementById('detective-target').value;
+    hideDetectiveModal();
+
+    if (targetVal === 'ROOM') {
+        finalizeGame('ROOM', '🏠 客房（預留卡牌）', '偵探發動公開處決！直接將【客房】預留卡牌送進鍋爐室。');
+    } else {
+        const targetPlayer = players.find(p => p.id === parseInt(targetVal));
+        finalizeGame(targetPlayer.id, targetPlayer.name, '偵探發動公開處決！直接將其關進鍋爐室。');
+    }
+}
+
+function goToVoting() {
+    if (timerInterval) clearInterval(timerInterval);
+    document.getElementById('step-discuss').classList.add('hidden');
+    document.getElementById('step-vote').classList.remove('hidden');
+
+    const container = document.getElementById('vote-list');
+    container.innerHTML = players.map(p => {
+        let options = players
+            .filter(t => t.id !== p.id)
+            .map(t => `<option value="${t.id}">${t.name}</option>`)
+            .join('');
+        
+        options += `<option value="ROOM">🏠 客房（預留卡牌）</option>`;
+
+        return `
+            <div class="vote-row">
+                <span><b>${p.name}</b> 投給：</span>
+                <select id="vote-from-${p.id}">${options}</select>
+            </div>
+        `;
+    }).join('');
+}
+
+function tallyVotes() {
+    let voteCounts = { 'ROOM': 0 };
+    players.forEach(p => voteCounts[p.id] = 0);
+
+    // 檢查是否有律師發動能力
+    let lawyer = players.find(p => p.card === '律師');
+    let nullifiedTargetVal = null;
+    if (lawyer) {
+        nullifiedTargetVal = document.getElementById(`vote-from-${lawyer.id}`).value;
+    }
+
+    // 計算票數（富商票數權重為 2）
+    players.forEach(p => {
+        let targetVal = document.getElementById(`vote-from-${p.id}`).value;
+        let weight = (p.card === '富商') ? 2 : 1;
+        voteCounts[targetVal] += weight;
+    });
+
+    let extraNote = '';
+    if (lawyer && nullifiedTargetVal) {
+        let targetName = nullifiedTargetVal === 'ROOM' ? '🏠 客房' : players.find(p => p.id === parseInt(nullifiedTargetVal)).name;
+        extraNote = `<br>⚖️ 律師公開發動能力：投給了 <b>${targetName}</b>，使其獲得的票數全部清零！`;
+        voteCounts[nullifiedTargetVal] = 0;
+    }
+
+    // 計算最高票數
+    let maxVotes = -1;
+    let highestKeys = [];
+
+    for (let key in voteCounts) {
+        if (voteCounts[key] > maxVotes) {
+            maxVotes = voteCounts[key];
+            highestKeys = [key];
+        } else if (voteCounts[key] === maxVotes) {
+            highestKeys.push(key);
+        }
+    }
+
+    let sentencedKey = highestKeys[0];
+    if (sentencedKey === 'ROOM') {
+        finalizeGame('ROOM', '🏠 客房（預留卡牌）', `客房獲得最高票被送進鍋爐室（得票：${maxVotes} 票）。${extraNote}`);
+    } else {
+        let sentencedPlayer = players.find(p => p.id === parseInt(sentencedKey));
+        finalizeGame(sentencedPlayer.id, sentencedPlayer.name, `最高票被關進鍋爐室（得票：${maxVotes} 票）。${extraNote}`);
+    }
+}
+
+function finalizeGame(targetId, targetName, reason) {
+    document.getElementById('step-discuss').classList.add('hidden');
+    document.getElementById('step-vote').classList.add('hidden');
+    document.getElementById('step-result').classList.remove('hidden');
+
+    let sentencedCard = (targetId === 'ROOM') ? deck[0] : players.find(p => p.id === targetId).card;
+
+    let titleText = '';
+    let resultHtml = `<b>裁決對象：</b>${targetName}<br><b>說明：</b>${reason}<br><br>`;
+
+    if (sentencedCard === '炸彈客') {
+        titleText = '💥 炸彈客引爆獨贏！';
+        resultHtml += `🔥 <b>【炸彈客】（在 ${targetName}）被關進鍋爐室！</b><br>炸彈客成功讓自己被指認，獨自獲得最終勝利！其他所有人皆失敗。`;
+    } else if (sentencedCard === '殺人魔') {
+        titleText = '🎉 賓客陣營（好人）獲勝！';
+        resultHtml += `⚖️ <b>【殺人魔】（在 ${targetName}）被抓獲！</b><br>正義得以伸張，好人陣營成功將殺人魔送進鍋爐室！`;
+    } else {
+        titleText = '😈 壞人陣營獲勝！';
+        resultHtml += `🩸 <b>【${sentencedCard}】（在 ${targetName}）被送進鍋爐室！</b><br>抓錯人了！真正的殺人魔成功混淆視聽並順利逃脫！`;
+    }
+
+    document.getElementById('winner-title').innerText = titleText;
+    document.getElementById('result-detail').innerHTML = resultHtml;
+
+    // 顯示全場真實卡牌分佈
+    let cardsHtml = `<b>【全場身份揭曉】</b><br>`;
+    players.forEach(p => {
+        const info = ROLE_DATA[p.card];
+        cardsHtml += `${p.name}：<b>${p.card}</b> (${info.team})<br>`;
+    });
+    cardsHtml += `<br>🏠 客房預留牌：<b>${deck[0]}</b> (${ROLE_DATA[deck[0]].team})`;
+    
+    document.getElementById('all-cards-detail').innerHTML = cardsHtml;
+}
+</script>
+
+</body>
+</html>
